@@ -1,0 +1,30 @@
+[project]
+name = "re-diffusion"
+version = "0.1.0"
+description = "Rectified flow Generation Model"
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "torch>=2.1",
+    "torchvision",
+    "diffusers>=0.25",
+    "transformers>=4.36",
+    "einops",
+    "numpy",
+    "matplotlib",
+    "datasets",
+    "huggingface_hub",
+    "webdataset",
+    "braceexpand",
+
+]
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
