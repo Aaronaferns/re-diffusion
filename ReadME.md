@@ -1,3 +1,4 @@
+---
 
 # Diffusion Transformer in Latent Space
 
@@ -7,7 +8,9 @@
 
 ## Abstract
 
-We present a from-scratch implementation of a latent diffusion model parameterized by a Transformer backbone with adaptive normalization conditioning. The model operates in the latent space of a pretrained Variational Autoencoder (VAE) and is trained using a rectified-flow formulation of diffusion, where the objective reduces to direct velocity prediction.
+This repository presents a from-scratch implementation of a latent diffusion model parameterized by a Transformer backbone with adaptive normalization conditioning.
+
+The model operates in the latent space of a pretrained Variational Autoencoder (VAE) and is trained using a rectified-flow formulation of diffusion, where the objective reduces to direct velocity prediction.
 
 The architecture integrates:
 
@@ -17,7 +20,7 @@ The architecture integrates:
 * Distributed streaming training over LAION metadata shards
 * Exponential Moving Average (EMA) stabilization
 
-This report describes the mathematical formulation, architectural components, and systems-level design decisions.
+This document describes the mathematical formulation, architectural components, and systems-level design decisions.
 
 ---
 
@@ -25,50 +28,47 @@ This report describes the mathematical formulation, architectural components, an
 
 Let:
 
-* $x \in \mathbb{R}^{3 \times H \times W}$ be an image
-* $\mathcal{E}_{VAE}$ encode images into latents
-* $z_0 = \mathcal{E}_{VAE}(x)$
-* $c$ be conditioning tokens (e.g., caption embeddings)
+* x in R^(3 x H x W) be an image
+* E_VAE encode images into latents
+* z0 = E_VAE(x)
+* c be conditioning tokens (e.g., caption embeddings)
 
-We seek to learn a generative model over latent space $z$ conditioned on $c$.
+We seek to learn a generative model over latent space z conditioned on c.
 
 ---
 
 # 2. Diffusion as Rectified Flow
 
-Instead of a variance schedule $\beta_t$, we define a linear interpolation process:
+Instead of using a variance schedule beta_t, we define a linear interpolation process:
 
-$$
-z_t = z_0 + t (z_1 - z_0)
-$$
+```
+z_t = z0 + t * (z1 - z0)
+```
 
 where:
 
-* $t \sim \mathcal{U}(0,1)$
-* $z_1 \sim \mathcal{N}(0, I)$
+* t ~ Uniform(0, 1)
+* z1 ~ Normal(0, I)
 
 Define the target velocity:
 
-$$
-v^* = z_1 - z_0
-$$
+```
+v* = z1 - z0
+```
 
 The model learns:
 
-$$
-v_\theta(z_t, c, t) \approx v^*
-$$
+```
+v_theta(z_t, c, t) ~= v*
+```
 
 Training loss:
 
-$$
-\mathcal{L} = \mathbb{E}*{z_0, z_1, t}
-\left[
-\left| v*\theta(z_t, c, t) - (z_1 - z_0) \right|_2^2
-\right]
-$$
+```
+L = E_{z0, z1, t} [ || v_theta(z_t, c, t) - (z1 - z0) ||^2 ]
+```
 
-This simplifies training to a regression problem over the velocity field.
+This reduces diffusion training to a regression problem over the velocity field.
 
 ---
 
@@ -78,15 +78,15 @@ We operate in the latent space of a pretrained Stable Diffusion VAE.
 
 Encoding:
 
-$$
-z = \text{mean}(\mathcal{E}_{VAE}(x)) \cdot s
-$$
+```
+z = mean( E_VAE(x) ) * s
+```
 
-where $s$ is a scaling factor from the VAE configuration.
+where s is a scaling factor from the VAE configuration.
 
 Advantages:
 
-* $\sim 16\times$ spatial compression
+* ~16x spatial compression
 * Reduced memory footprint
 * Faster training
 * Improved inductive bias
@@ -101,28 +101,29 @@ The backbone is a Diffusion Transformer (DiT)-style encoder.
 
 ## 4.1 Patch Embedding
 
-Latent tensors
-$$
-z \in \mathbb{R}^{B \times C \times H \times W}
-$$
+Latent tensors:
 
-are converted to tokens via:
+```
+z in R^(B x C x H x W)
+```
 
-$$
-\text{Conv2d}(C \rightarrow d_{model}, \text{stride} = P)
-$$
+are converted into tokens via:
+
+```
+Conv2d(C -> d_model, stride = P)
+```
 
 Flattened into:
 
-$$
-X \in \mathbb{R}^{B \times N \times d_{model}}
-$$
+```
+X in R^(B x N x d_model)
+```
 
-where
+where:
 
-$$
-N = \left(\frac{H}{P}\right)^2
-$$
+```
+N = (H / P)^2
+```
 
 Learned positional embeddings are added to token representations.
 
@@ -132,18 +133,15 @@ Learned positional embeddings are added to token representations.
 
 We use sinusoidal timestep embeddings:
 
-$$
-\text{Emb}(t) =
-\left[
-\sin(\omega_i t), \cos(\omega_i t)
-\right]
-$$
+```
+Emb(t) = [ sin(w_i * t), cos(w_i * t) ]
+```
 
-These are projected via MLP and fused with caption embeddings:
+These are projected via an MLP and fused with caption embeddings:
 
-$$
-\tilde{t} = W_t \text{Emb}(t) + W_c ,\text{mean}(c)
-$$
+```
+t_tilde = W_t * Emb(t) + W_c * mean(c)
+```
 
 This fused time representation conditions all transformer layers.
 
@@ -153,15 +151,13 @@ This fused time representation conditions all transformer layers.
 
 For each transformer block:
 
-$$
-x_{norm} = \text{LayerNorm}(x)
-$$
+```
+x_norm = LayerNorm(x)
 
-$$
-x = x_{norm} \cdot (1 + \gamma(t)) + \beta(t)
-$$
+x = x_norm * (1 + gamma(t)) + beta(t)
+```
 
-Parameters $\gamma$ and $\beta$ are initialized to zero.
+Parameters gamma and beta are initialized to zero.
 
 Benefits:
 
@@ -175,23 +171,23 @@ Benefits:
 
 Each DiT layer processes:
 
-* Image tokens $x$
-* Caption tokens $c$
+* Image tokens x
+* Caption tokens c
 
 Procedure:
 
 1. Pre-normalize both streams
-2. Compute $Q$, $K$, $V$ for both
+2. Compute Q, K, V for both
 3. Concatenate token sequences
 4. Perform multi-head attention
 5. Split outputs
-6. Apply residual + MLP
+6. Apply residual connections + MLP
 
 This yields symmetric conditioning:
 
-$$
-(x, c) \rightarrow (x', c')
-$$
+```
+(x, c) -> (x', c')
+```
 
 Unlike U-Net diffusion architectures that use asymmetric cross-attention, this design enables full token-level interaction.
 
@@ -201,12 +197,9 @@ Unlike U-Net diffusion architectures that use asymmetric cross-attention, this d
 
 Attention is computed as:
 
-$$
-\text{Attention}(Q,K,V)
-=
-
-\text{softmax}\left(\frac{QK^\top}{\sqrt{d_k}}\right)V
-$$
+```
+Attention(Q, K, V) = softmax( Q K^T / sqrt(d_k) ) V
+```
 
 This is implemented manually for architectural transparency and experimental flexibility.
 
@@ -216,8 +209,8 @@ This is implemented manually for architectural transparency and experimental fle
 
 Full training step:
 
-1. Sample $t$
-2. Compute $z_t$
+1. Sample t
+2. Compute z_t
 3. Predict velocity
 4. Compute MSE loss
 5. Update model
@@ -225,17 +218,9 @@ Full training step:
 
 Objective:
 
-$$
-\mathcal{L}
-=
-
-\left|
-v_\theta(z_t, c, t)
--
-
-(z_1 - z_0)
-\right|_2^2
-$$
+```
+L = || v_theta(z_t, c, t) - (z1 - z0) ||^2
+```
 
 EMA stabilizes sampling trajectories and improves convergence.
 
@@ -264,8 +249,8 @@ Advantages:
 
 | Feature        | Traditional DDPM    | This Implementation    |
 | -------------- | ------------------- | ---------------------- |
-| Noise Schedule | $\beta$-schedule    | Linear interpolation   |
-| Prediction     | $\epsilon$ or $x_0$ | Velocity               |
+| Noise Schedule | beta-schedule       | Linear interpolation   |
+| Prediction     | epsilon or x0       | Velocity               |
 | Backbone       | U-Net               | Transformer            |
 | Space          | Pixel               | Latent                 |
 | Conditioning   | Cross-attn in U-Net | Symmetric token fusion |
@@ -285,7 +270,13 @@ Advantages:
 
 # 9. Conclusion
 
-We presented a modular, from-scratch implementation of a Diffusion Transformer trained in latent space using a rectified-flow formulation. The system emphasizes architectural clarity, scalability, and research extensibility.
+We presented a modular, from-scratch implementation of a Diffusion Transformer trained in latent space using a rectified-flow formulation.
+
+The system emphasizes:
+
+* Architectural clarity
+* Scalability
+* Research extensibility
 
 This implementation bridges:
 
